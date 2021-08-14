@@ -1,0 +1,55 @@
+name: crub
+version: "0.1"
+author: sower <u4t145@163.com>
+about: a C rusty builder
+args:
+    - config:
+        short: c
+        long: config
+        value_name: FILE
+        about: Sets a custom config file
+        takes_value: true
+    - verbose:
+        short: v
+        multiple: true
+        about: Sets the level of verbosity
+subcommands:
+    - init:
+        about: initialize workfolder
+        version: "0.1"
+        author: sower <u4t145@163.com>
+        args:
+            - nogit:
+                short: ng
+                about: don't initialize git
+            - name:
+                short: n
+                about: set lib name
+                value_name: NAME
+                takes_value: true
+    - run:
+        about: build and run!
+        version: "0.1"
+        author: sower <u4t145@163.com>
+        args:
+            - use:
+                short: u
+                about: use specific compiler
+                value_name: COMPILER
+                takes_value: true
+    - headgen:
+        about: generate a head file by a source file
+        version: "0.1"
+        author: sower <u4t145@163.com>
+        args:
+            - src:
+                short: s
+                value_name: SRC_FILE
+                about: source file
+                takes_value: true
+            - dst:
+                short: d
+                value_name: HEAD_FILE
+                about: generated file path
+                takes_value: true
+                
