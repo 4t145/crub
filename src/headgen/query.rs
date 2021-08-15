@@ -1,18 +1,4 @@
 
-
-// struct TranslatorFn<'this> {
-//     tp: Vec<u8>,
-//     dec: Vec<u8>,
-//     query: &'this str
-// }
-
-// struct TranslatorSt<'this> {
-//     name: Vec<u8>,
-//     dec: Vec<u8>,
-//     query: &'this str
-// }
-
-
 pub const FN_QUERY:&str = r#"
 (translation_unit 
     (function_definition 
@@ -20,9 +6,6 @@ pub const FN_QUERY:&str = r#"
         declarator:(_) @declarator 
         body: (_)))
 "#;
-
-
-
 
 pub const STRUCT_TYPE_QUERY:&str = r#"
 (type_definition ;

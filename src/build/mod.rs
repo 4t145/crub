@@ -1,26 +1,39 @@
-use std::{fs, path::{Path, PathBuf}, process::Command, str::FromStr};
-use toml;
-use serde::{Deserialize};
 use super::logger;
+use std::{fs::{self, read_dir}, path::{Path, PathBuf}, process::Command, str::FromStr};
 
+use serde::{Deserialize};
+use std::ffi::{OsString};
 #[derive(Deserialize)]
-struct Config {
-    tool: Tool,
+pub struct Config {
+    pub tool: Tool,
+    pub bin: Vec<Box<Bin>>
 }
 
 #[derive(Deserialize)]
-struct Tool {
-    gcc: Option<Gcc>
+pub struct Bin {
+    pub name:String,
+    pub path:String,
+
+}
+#[derive(Deserialize)]
+pub struct Tool {
+    pub gcc: Option<Gcc>
+}
+pub trait Compiler {
+    fn compile_obj(&self, src: &Path, dst: &Path);
+    fn link_dll(&self, objs: &Vec<PathBuf>, out_path: &Path);
+    fn link_lib(&self, objs: &Vec<PathBuf>, out_path: &Path);
+    fn link_bin(&self, objs: &Vec<PathBuf>, out_path: &Path);
 }
 
 #[derive(Deserialize)]
-struct Gcc {
+pub struct Gcc {
     bin: String,
 }
 
-impl Gcc {
+impl Compiler for Gcc {
     fn compile_obj(&self, src: &Path, dst: &Path) {
-        let bin = self.bin.as_str().clone();
+        let bin = self.bin.clone();
         let mut cmd = Command::new(bin);
         cmd.arg("-c")
         .arg(src)
@@ -29,8 +42,26 @@ impl Gcc {
         cmd.output().expect("error occurs while gcc compiling");
     }
 
-    fn link(&self, objs: Vec<&Path>, out_path: &Path) {
-        let mut cmd = Command::new(self.bin.as_str());
+    fn link_bin(&self, objs: &Vec<PathBuf>, out_path: &Path) {
+        let mut cmd = Command::new(self.bin.clone());
+        cmd
+        .args(objs)
+        .arg("-o").arg(out_path);
+
+        cmd.output().expect("error occurs while gcc linking");
+    }
+
+    fn link_dll(&self, objs: &Vec<PathBuf>, out_path: &Path) {
+        let mut cmd = Command::new(self.bin.clone());
+        cmd
+        .args(objs)
+        .arg("-o").arg(out_path);
+
+        cmd.output().expect("error occurs while gcc linking");
+    }
+
+    fn link_lib(&self, objs: &Vec<PathBuf>, out_path: &Path) {
+        let mut cmd = Command::new(self.bin.clone());
         cmd
         .args(objs)
         .arg("-o").arg(out_path);
@@ -39,49 +70,129 @@ impl Gcc {
     }
 }
 
-pub fn build_by(compiler: &str) -> Result<PathBuf, ()> {
-    let mut path = PathBuf::from_str("./").unwrap();
-    let mut src_path = PathBuf::from_str("./src").unwrap();
-    path.push("./Build.toml");
-    logger::info("Building", "reading Build.toml");
-    let build_toml = fs::read(&path).unwrap();
-    let build_config: Config = toml::from_slice(&build_toml).unwrap();
-    path.pop();
-    path.push("build");
-    path.push("debug");
-    fs::create_dir(&path).unwrap();
-    match compiler {
-        "gcc" => {
-            logger::info("Building", "ready to build");
-            let gcc = build_config.tool.gcc.unwrap();
-            path.push("obj");
-            fs::create_dir(&path).unwrap();
-            let filename = String::from("lib");
-            let src_filename = format!("{}.c",filename);
-            let obj_filename = format!("{}.obj",filename);
-            
-            src_path.push(src_filename);
-            path.push(obj_filename);
-            gcc.compile_obj(&src_path, &path);
-            let lib_obj_path = path.clone();
-            path.pop();
-            path.pop();
-
-            let exe_filename = format!("{}.exe",filename);
-            path.push(exe_filename);
-            let exe_path = path.as_path();
-
-            let objs = vec![lib_obj_path.as_path()];
-            gcc.link(objs, exe_path);
-            logger::info("Building", "building by gcc");
-            return Ok(exe_path.to_path_buf()); 
-        }
-        _ => {Err(())}
-    }
-    // Command::new().arg("init").output().expect("git init fail!");
-
+pub struct Mod {
+    name: OsString,
+    submods:Vec<Box<Mod>>,
+    srcs:Vec<OsString>,
+    tests:Vec<OsString>
 }
 
+impl Mod {
+    fn new(name:OsString) -> Self {
+        Self {
+            name,
+            submods: Vec::new(),
+            tests: Vec::new(),
+            srcs: Vec::new(),
+        }
+    }
+
+    fn index(&mut self, path_buf: &mut PathBuf) {
+        path_buf.push(self.name.clone());
+        for entry in read_dir(&path_buf).unwrap() {
+            let path = entry.unwrap().path();
+            let filename = path.file_name().unwrap().to_os_string();
+            if path.is_dir() {
+                
+                let info = format!("Indexing submod {}", path.to_str().unwrap());
+                logger::info("Indexing", info.as_str());
+
+                let mut submod = Mod::new(filename);
+                submod.index(path_buf);
+                self.submods.push(Box::new(submod));
+            }
+            else if path.ends_with("test.c") {
+
+                let info = format!("Indexing test {}", path.to_str().unwrap());
+                logger::info("Indexing", info.as_str());
+
+                self.tests.push(filename);
+            }
+            else if path.extension().unwrap()=="c" {
+
+                let info = format!("Indexing sourcefile {}", path.to_str().unwrap());
+                logger::info("Indexing", info.as_str());
+
+                self.srcs.push(filename);
+            }
+        }
+        path_buf.pop();
+    }
+
+    fn build_obj<C:Compiler>(
+        &self, 
+        builder_path_buf: &mut PathBuf, 
+        src_path_buf: &mut PathBuf,
+        compiler: &C) 
+    {
+        builder_path_buf.push(self.name.clone());
+        src_path_buf.push(self.name.clone());
+        fs::create_dir(&builder_path_buf).unwrap_or(());
+        for submod in &self.submods {
+            let info = format!(
+                "Building submod from {} to {}", 
+                src_path_buf.to_str().unwrap(), 
+                builder_path_buf.to_str().unwrap()
+            );
+            logger::info("Compiling", info.as_str());
+            submod.build_obj(builder_path_buf, src_path_buf, compiler);
+        }
+        for src in &self.srcs {
+
+            let mut objname = src.clone();
+            objname.push(".obj");
+            src_path_buf.push(src.clone());
+            builder_path_buf.push(objname);
+
+            let info = format!(
+                "Building source file from {} to {}", 
+                src_path_buf.to_str().unwrap(), 
+                builder_path_buf.to_str().unwrap()
+            );
+            logger::info("Compiling", info.as_str());
+
+            compiler.compile_obj(&src_path_buf, &builder_path_buf);
+            builder_path_buf.pop();
+            src_path_buf.pop();
+        }
+        src_path_buf.pop();
+        builder_path_buf.pop();
+    }
+}
+
+pub fn collect_objs(path_buf: &PathBuf, targets:&mut Vec<PathBuf>) {
+    for entry in read_dir(&path_buf).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            // let filename = path.file_name().unwrap().to_os_string();
+            collect_objs(&path, targets);
+        }
+        else if path.extension().unwrap()=="obj" {
+            targets.push(path);
+        }
+    }
+}
+
+pub fn index_lib() -> Result<Mod, ()>{
+    let mut lib = Mod::new(OsString::from(""));
+    logger::info("Indexing", "index ./src/*");
+    let mut src_path_buf = PathBuf::from_str("./src").unwrap();
+    lib.index(&mut src_path_buf);
+    return Ok(lib);
+}
+
+pub fn build_obj_by<C:Compiler>(compiler: &C, module: &Mod ) { 
+    let mut builder_path_buf = PathBuf::from_str("./build").unwrap();
+    builder_path_buf.push("debug");
+    fs::create_dir(&builder_path_buf).unwrap_or(());
+
+    logger::info("Compiling", "ready to compile");
+    builder_path_buf.push("obj");
+    fs::create_dir(&builder_path_buf).unwrap_or(());
+    logger::info("Compiling", "start to compile");
+    let mut src_path_buf = PathBuf::from_str("./src").unwrap();
+    module.build_obj(&mut builder_path_buf, &mut src_path_buf, compiler);
+}
 
 pub fn excute(path: &Path) {
     logger::ok("starting", "start to run");
@@ -98,4 +209,5 @@ pub fn excute(path: &Path) {
             logger::err("fail", err.to_string().as_str());
         }
     }
+
 }

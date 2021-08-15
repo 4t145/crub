@@ -37,6 +37,30 @@ subcommands:
                 about: use specific compiler
                 value_name: COMPILER
                 takes_value: true
+    - buildobj:
+        about: build objects!
+        version: "0.1"
+        author: sower <u4t145@163.com>
+        args:
+            - use:
+                short: u
+                about: use specific compiler
+                value_name: COMPILER
+                takes_value: true
+    - link:
+        about: build!
+        version: "0.1"
+        author: sower <u4t145@163.com>
+        args:
+            - bin:
+                short: b
+                about: output binary file
+            - lib:
+                short: l
+                about: output static lib
+            - dll:
+                short: d
+                about: output dynamic lib
     - headgen:
         about: generate a head file by a source file
         version: "0.1"
@@ -52,4 +76,5 @@ subcommands:
                 value_name: HEAD_FILE
                 about: generated file path
                 takes_value: true
+    
                 
