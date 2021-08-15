@@ -2,7 +2,8 @@
 name = "crub"
 version = "0.1.0"
 edition = "2018"
-
+authors = ["4t145 <u4t145@163.com>"]
+include = ["/src", "/tree-sitter-c"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -14,3 +15,4 @@ serde = {version = "1.0.126", features = ["derive"]}
 
 [build-dependencies]
 cc="*"
+
